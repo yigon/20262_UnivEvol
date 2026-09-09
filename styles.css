@@ -289,6 +289,10 @@ dd { margin: 0; color: #444; }
   font-size: 13px;
 }
 
+.google-login-btn {
+  white-space: nowrap;
+}
+
 .auth-user-label {
   max-width: 220px;
   overflow: hidden;

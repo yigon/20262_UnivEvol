@@ -8,14 +8,6 @@ const submitEntry = document.querySelector("#submitEntry");
 const menuToggle = document.querySelector("#menuToggle");
 const mainNav = document.querySelector("#mainNav");
 
-const authDialog = document.querySelector("#authDialog");
-const authEmail = document.querySelector("#authEmail");
-const authOtp = document.querySelector("#authOtp");
-const otpArea = document.querySelector("#otpArea");
-const authStatus = document.querySelector("#authStatus");
-const sendOtpButton = document.querySelector("#sendOtp");
-const verifyOtpButton = document.querySelector("#verifyOtp");
-
 const taLine = document.querySelector("#taLine");
 taLine.textContent = SITE_CONFIG.taLine;
 
@@ -33,19 +25,43 @@ let access = {
 let entriesCache = [];
 let voteCounts = new Map();
 let myVoteEntryId = null;
-let pendingAuthEmail = "";
+
+const POST_AUTH_ROUTE_KEY = "evoluniverse_post_auth_route";
+
+function restorePostAuthRoute() {
+  const savedRoute = sessionStorage.getItem(POST_AUTH_ROUTE_KEY);
+  if (!savedRoute) return;
+  sessionStorage.removeItem(POST_AUTH_ROUTE_KEY);
+  if (location.hash !== savedRoute) location.hash = savedRoute;
+}
 
 if (configured) {
   const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
-  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { data } = await supabase.auth.getSession();
+  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      flowType: "pkce",
+      detectSessionInUrl: true,
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  });
+
+  const { data, error } = await supabase.auth.getSession();
+  if (error) console.error(error);
   session = data.session;
   await refreshAccess();
+  if (session) restorePostAuthRoute();
 
-  supabase.auth.onAuthStateChange((_event, nextSession) => {
+  supabase.auth.onAuthStateChange((event, nextSession) => {
     session = nextSession;
     setTimeout(async () => {
       await refreshAccess();
+      if (event === "SIGNED_IN") {
+        restorePostAuthRoute();
+        if (!access.is_admin && !access.can_submit && !access.can_vote) {
+          alert("Google 로그인은 완료되었지만 현재 수강생 명단에 등록된 계정이 아닙니다.");
+        }
+      }
       await router();
     }, 0);
   });
@@ -130,7 +146,7 @@ async function refreshAccess() {
 function authControlsHtml() {
   if (!configured) return "";
   if (!session) {
-    return `<button id="loginButton" class="btn secondary">로그인</button>`;
+    return `<button id="loginButton" class="btn secondary google-login-btn">Google 로그인</button>`;
   }
   const label = access.is_admin ? "조교 로그인" : escapeHtml(access.email || session.user.email || "로그인됨");
   return `
@@ -139,7 +155,7 @@ function authControlsHtml() {
 }
 
 function wireAuthControls() {
-  document.querySelector("#loginButton")?.addEventListener("click", openAuthDialog);
+  document.querySelector("#loginButton")?.addEventListener("click", signInWithGoogle);
   document.querySelector("#logoutButton")?.addEventListener("click", async () => {
     await supabase.auth.signOut();
   });
@@ -238,7 +254,7 @@ async function renderEntries() {
 
   wireAuthControls();
   document.querySelector("#openComposer").addEventListener("click", () => {
-    if (!session) return openAuthDialog();
+    if (!session) return signInWithGoogle();
     if (!access.can_submit) {
       alert("수강생 명단에 제출 권한이 등록된 계정만 작품을 제출할 수 있습니다.");
       return;
@@ -368,7 +384,7 @@ function renderAttachment(file) {
 async function castVote(entryId) {
   if (!configured) return;
   if (!session) {
-    openAuthDialog();
+    await signInWithGoogle();
     return;
   }
   await refreshAccess();
@@ -584,7 +600,11 @@ entryForm.addEventListener("submit", async (event) => {
   if (!configured) return;
   if (!session || !access.can_submit) {
     closeComposer();
-    openAuthDialog();
+    if (!session) {
+      await signInWithGoogle();
+    } else {
+      alert("수강생 명단에 제출 권한이 등록된 계정만 작품을 제출할 수 있습니다.");
+    }
     return;
   }
 
@@ -633,92 +653,35 @@ entryForm.addEventListener("submit", async (event) => {
   }
 });
 
-function openAuthDialog() {
+async function signInWithGoogle() {
   if (!configured) {
     alert("먼저 Supabase 설정을 완료해 주세요.");
     return;
   }
-  authStatus.textContent = "";
-  authStatus.classList.remove("error");
-  authOtp.value = "";
-  otpArea.hidden = true;
-  verifyOtpButton.hidden = true;
-  sendOtpButton.hidden = false;
-  authDialog.showModal();
-}
 
-function closeAuthDialog() {
-  authDialog.close();
-  authStatus.textContent = "";
-  authStatus.classList.remove("error");
-}
+  // OAuth 후 사용자가 보고 있던 탭으로 돌아오기 위한 SPA route 보존.
+  sessionStorage.setItem(POST_AUTH_ROUTE_KEY, location.hash || "#entries");
 
-sendOtpButton.addEventListener("click", async () => {
-  const email = authEmail.value.trim().toLowerCase();
-  if (!email || !email.includes("@")) {
-    authStatus.textContent = "올바른 이메일 주소를 입력해 주세요.";
-    authStatus.classList.add("error");
-    return;
-  }
+  // GitHub Pages의 repository 경로까지 포함하되 hash는 제외합니다.
+  const redirectTo = `${location.origin}${location.pathname}`;
 
-  sendOtpButton.disabled = true;
-  authStatus.classList.remove("error");
-  authStatus.textContent = "인증 코드를 보내는 중…";
   try {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: true },
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo,
+        queryParams: {
+          prompt: "select_account",
+        },
+      },
     });
     if (error) throw error;
-    pendingAuthEmail = email;
-    otpArea.hidden = false;
-    verifyOtpButton.hidden = false;
-    sendOtpButton.hidden = true;
-    authStatus.textContent = "이메일로 받은 6자리 코드를 입력하세요.";
-    authOtp.focus();
   } catch (error) {
     console.error(error);
-    authStatus.textContent = error.message || "인증 메일 전송에 실패했습니다.";
-    authStatus.classList.add("error");
-  } finally {
-    sendOtpButton.disabled = false;
+    sessionStorage.removeItem(POST_AUTH_ROUTE_KEY);
+    alert(error.message || "Google 로그인에 실패했습니다.");
   }
-});
-
-verifyOtpButton.addEventListener("click", async () => {
-  const token = authOtp.value.trim();
-  if (!/^\d{6}$/.test(token)) {
-    authStatus.textContent = "6자리 인증 코드를 입력해 주세요.";
-    authStatus.classList.add("error");
-    return;
-  }
-
-  verifyOtpButton.disabled = true;
-  authStatus.classList.remove("error");
-  authStatus.textContent = "인증 중…";
-  try {
-    const { data, error } = await supabase.auth.verifyOtp({
-      email: pendingAuthEmail || authEmail.value.trim().toLowerCase(),
-      token,
-      type: "email",
-    });
-    if (error) throw error;
-    session = data.session;
-    await refreshAccess();
-    closeAuthDialog();
-
-    if (!access.is_admin && !access.can_submit && !access.can_vote) {
-      alert("로그인은 되었지만 현재 수강생 명단에 등록된 계정이 아닙니다.");
-    }
-    await router();
-  } catch (error) {
-    console.error(error);
-    authStatus.textContent = error.message || "인증에 실패했습니다.";
-    authStatus.classList.add("error");
-  } finally {
-    verifyOtpButton.disabled = false;
-  }
-});
+}
 
 // Dialog / navigation wiring
 document.querySelector("#closeComposer").addEventListener("click", closeComposer);
@@ -729,12 +692,6 @@ composer.addEventListener("click", (event) => {
   if (outside) closeComposer();
 });
 
-document.querySelector("#closeAuth").addEventListener("click", closeAuthDialog);
-authDialog.addEventListener("click", (event) => {
-  const rect = authDialog.getBoundingClientRect();
-  const outside = event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
-  if (outside) closeAuthDialog();
-});
 
 menuToggle.addEventListener("click", () => {
   const open = mainNav.classList.toggle("open");
