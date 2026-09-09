@@ -445,30 +445,49 @@ async function renderEntryDetail(id) {
     let entry = entriesCache.find((item) => item.id === id);
 
     if (!entry && configured) {
-      const { data, error } = await supabase
+      let query = supabase
         .from("entries")
         .select("id,title,body,attachments,is_published,published_at,show_author,public_author,public_department,created_at,publication_stage,is_finalist")
-        .eq("id", id)
-        .neq("publication_stage", "hidden")
-        .single();
+        .eq("id", id);
+
+      // 일반 사용자는 비공개 작품을 조회하지 못하고, 조교만 RLS를 통해 열람할 수 있습니다.
+      if (!access.is_admin) query = query.neq("publication_stage", "hidden");
+
+      const { data, error } = await query.single();
       if (error) throw error;
       [entry] = await attachSignedUrls([data]);
       await loadVoteState();
     }
     if (!entry) throw new Error("게시물을 찾을 수 없습니다.");
 
+    let privateEntry = null;
+    if (access.is_admin) {
+      const { data, error } = await supabase
+        .from("entry_private")
+        .select("author_name,department,submitted_email")
+        .eq("entry_id", entry.id)
+        .maybeSingle();
+      if (error) console.error(error);
+      privateEntry = data || null;
+    }
+
     const mediaHtml = (Array.isArray(entry.attachments) ? entry.attachments : []).map(renderAttachment).join("");
     const author = entry.show_author
       ? [entry.public_author, entry.public_department].filter(Boolean).map(escapeHtml).join(" · ")
       : "익명";
     const voteState = voteButtonState(entry);
+    const adminPrivateHtml = access.is_admin && privateEntry
+      ? `<div class="admin-detail-private"><strong>조교 확인용 제출자 정보</strong><span>${[privateEntry.author_name, privateEntry.department].filter(Boolean).map(escapeHtml).join(" · ")} · ${escapeHtml(privateEntry.submitted_email || "이메일 정보 없음")}</span></div>`
+      : "";
 
     app.innerHTML = `
       <article class="entry-detail">
         <button class="back-link" id="backToEntries">← Entries로 돌아가기</button>
+        ${entry.publication_stage === "hidden" && access.is_admin ? `<div class="detail-private-badge">비공개 · 조교 전용 열람</div>` : ""}
         ${entry.is_finalist ? `<div class="detail-finalist-badge">본선 진출작</div>` : ""}
         <h1>${escapeHtml(entry.title)}</h1>
         <div class="detail-meta">${author} · ${formatDate(entry.published_at || entry.created_at)}</div>
+        ${adminPrivateHtml}
         <div class="detail-media">${mediaHtml}</div>
         ${entry.body ? `<div class="detail-body">${escapeHtml(entry.body)}</div>` : ""}
         <div class="detail-actions">
@@ -663,11 +682,12 @@ async function renderAdminPanel() {
                   ${entry.is_finalist ? `<span class="status-chip finalist">본선 진출</span>` : ""}
                 </div>
                 <div>
-                  <strong>${escapeHtml(entry.title)}</strong>
+                  <button class="admin-entry-title" data-admin-open="${entry.id}">${escapeHtml(entry.title)}</button>
                   <div class="admin-private-info">${authorLabel} · ${email}</div>
                 </div>
               </div>
               <div class="admin-row-actions">
+                <button class="btn secondary" data-admin-open="${entry.id}">열람</button>
                 <button class="btn secondary" data-finalist-toggle="${entry.id}">${finalistText}</button>
                 <button class="btn secondary" data-stage-preliminary="${entry.id}" ${entry.publication_stage === "preliminary" ? "disabled" : ""}>예선 공개</button>
                 <button class="btn secondary" data-stage-final="${entry.id}" ${!entry.is_finalist || entry.publication_stage === "final" ? "disabled" : ""} title="본선 진출작만 본선 공개할 수 있습니다.">본선 공개</button>
@@ -679,6 +699,12 @@ async function renderAdminPanel() {
         }).join("") || `<div class="admin-empty">아직 제출된 작품이 없습니다.</div>`}
       </div>
     </section>`;
+
+  host.querySelectorAll("[data-admin-open]").forEach((button) => {
+    button.addEventListener("click", () => {
+      location.hash = `#entry/${button.dataset.adminOpen}`;
+    });
+  });
 
   document.querySelector("#publishAllPreliminary")?.addEventListener("click", async () => {
     if (!pending.length) return;
@@ -883,6 +909,8 @@ entryForm.addEventListener("submit", async (event) => {
     const files = Array.from(document.querySelector("#entryFiles").files || []);
 
     if (!title) throw new Error("제목을 입력해 주세요.");
+    if (!author) throw new Error("이름을 입력해 주세요.");
+    if (!department) throw new Error("학과/학부를 입력해 주세요.");
     if (!body && !files.length) throw new Error("본문 또는 첨부 파일 중 하나는 있어야 합니다.");
 
     entryId = crypto.randomUUID();

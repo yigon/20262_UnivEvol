@@ -284,7 +284,15 @@ begin
     raise exception 'body_too_long';
   end if;
 
-  if char_length(coalesce(p_author_name, '')) > 80 or char_length(coalesce(p_department, '')) > 100 then
+  if char_length(trim(coalesce(p_author_name, ''))) < 1 then
+    raise exception 'author_required';
+  end if;
+
+  if char_length(trim(coalesce(p_department, ''))) < 1 then
+    raise exception 'department_required';
+  end if;
+
+  if char_length(p_author_name) > 80 or char_length(p_department) > 100 then
     raise exception 'private_field_too_long';
   end if;
 
@@ -303,7 +311,7 @@ begin
   insert into public.entry_private (
     entry_id, author_name, department, submitted_by, submitted_email
   ) values (
-    p_id, coalesce(p_author_name, ''), coalesce(p_department, ''),
+    p_id, trim(p_author_name), trim(p_department),
     auth.uid(), public.current_user_email()
   );
 

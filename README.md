@@ -281,3 +281,8 @@ export const SUPABASE_ANON_KEY = "sb_publishable_...";
 ```
 
 `service_role` 키나 Google Client Secret은 GitHub 저장소에 넣지 마세요.
+
+
+## 제출자 정보 필수 입력
+
+이름과 학과/학부는 제출 시 필수입니다. 이 정보는 `entry_private`에 저장되어 조교만 확인하며, 예선 공개 시에는 외부에 노출되지 않습니다. 본선 공개 여부는 조교가 관리합니다.

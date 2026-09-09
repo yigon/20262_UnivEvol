@@ -361,8 +361,41 @@ dd { margin: 0; color: #444; }
 
 .admin-row:last-child { border-bottom: 0; }
 .admin-row-main { min-width: 0; display: flex; align-items: flex-start; gap: 11px; }
-.admin-row-main strong { font-size: 13px; font-weight: 500; }
+.admin-entry-title {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+.admin-entry-title:hover { text-decoration: underline; }
 .admin-private-info { margin-top: 3px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+
+.admin-detail-private {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: -8px 0 26px;
+  padding: 11px 13px;
+  border: 1px solid #dce5f3;
+  background: #fbfdff;
+  color: #4a5870;
+  font-size: 12px;
+}
+.admin-detail-private strong { color: var(--ink); font-weight: 500; }
+.detail-private-badge {
+  display: inline-block;
+  margin: 0 0 12px;
+  padding: 3px 8px;
+  border: 1px solid #eadc9b;
+  background: #fff7d6;
+  font-size: 11px;
+  color: #665d2f;
+}
 
 .status-chip {
   flex: 0 0 auto;
