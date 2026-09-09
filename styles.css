@@ -74,56 +74,23 @@ a { color: inherit; }
 
 .hero {
   width: 100%;
-  aspect-ratio: 980 / 560;
+  aspect-ratio: 1200 / 421;
   min-height: 320px;
   position: relative;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 62% 33%, rgba(96,131,181,.26), transparent 18%),
-    radial-gradient(circle at 32% 70%, rgba(68,78,133,.20), transparent 24%),
-    linear-gradient(180deg, #071322 0%, #101f35 57%, #1d293b 100%);
+
+  background-image: url("assets/220702_MW.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
-.hero::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  opacity: .78;
-  background-image:
-    radial-gradient(circle at 8% 12%, #fff 0 1px, transparent 1.5px),
-    radial-gradient(circle at 17% 36%, #fff 0 .8px, transparent 1.3px),
-    radial-gradient(circle at 25% 16%, #fff 0 1.1px, transparent 1.6px),
-    radial-gradient(circle at 36% 50%, #fff 0 .8px, transparent 1.4px),
-    radial-gradient(circle at 44% 28%, #fff 0 1px, transparent 1.5px),
-    radial-gradient(circle at 53% 65%, #fff 0 .9px, transparent 1.4px),
-    radial-gradient(circle at 65% 13%, #fff 0 .9px, transparent 1.4px),
-    radial-gradient(circle at 74% 46%, #fff 0 1.1px, transparent 1.6px),
-    radial-gradient(circle at 86% 20%, #fff 0 .8px, transparent 1.4px),
-    radial-gradient(circle at 92% 73%, #fff 0 1px, transparent 1.5px);
-  background-size: 190px 170px;
+
+.home-copy {
+  max-width: 650px;
+  padding: 38px 0 50px;
+  margin: 0 auto;
+  text-align: center;
 }
-.shooting-star {
-  position: absolute;
-  z-index: 2;
-  width: 165px;
-  height: 1px;
-  transform: rotate(-28deg);
-  transform-origin: right center;
-  background: linear-gradient(90deg, transparent 0%, rgba(203,226,255,.35) 35%, #fff 100%);
-  filter: drop-shadow(0 0 5px rgba(255,255,255,.7));
-}
-.shooting-star::after {
-  content: "";
-  position: absolute;
-  right: -2px;
-  top: -2px;
-  width: 5px; height: 5px;
-  border-radius: 50%; background: #fff;
-  box-shadow: 0 0 9px 2px rgba(183,218,255,.85);
-}
-.star-a { top: 30%; right: 20%; }
-.star-b { top: 57%; right: 47%; width: 105px; opacity: .7; }
-.star-c { top: 19%; right: 64%; width: 70px; opacity: .5; }
-.home-copy { max-width: 650px; padding: 38px 0 50px; }
 .home-copy h1 { margin: 0; font-size: 24px; font-weight: 500; }
 .home-copy .semester { margin: 4px 0 20px; font-size: 15px; }
 .home-copy p:last-child { margin: 0; font-size: 14px; color: #4b4b4b; }
