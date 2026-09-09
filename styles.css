@@ -382,3 +382,92 @@ dd { margin: 0; color: #444; }
   .admin-panel-head, .admin-row { align-items: flex-start; flex-direction: column; }
   .admin-row-actions { width: 100%; }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Preliminary / final publication + 3-vote tournament additions              */
+/* -------------------------------------------------------------------------- */
+
+.btn.danger {
+  border-color: #b42318;
+  background: #fff;
+  color: #b42318;
+}
+.btn.danger:hover:not(:disabled) { background: #fff2f0; }
+
+.vote-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: -4px 0 26px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+}
+.vote-summary.open { border-color: #cbd7ea; background: #f7faff; }
+.vote-summary strong { font-weight: 500; }
+
+.entries-section { margin: 0 0 48px; }
+.entries-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 0 0 18px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.entries-section-head h2 { margin: 0; font-size: 17px; font-weight: 500; }
+.entries-section-head span { color: var(--muted); font-size: 11px; }
+.finalist-section .entries-section-head { border-bottom-color: #cdd9eb; }
+
+.entry-card { position: relative; }
+.finalist-card { border-color: #cbd7ea; }
+.finalist-badge {
+  position: absolute;
+  z-index: 3;
+  top: 9px;
+  left: 9px;
+  padding: 3px 7px;
+  background: rgba(255,255,255,.94);
+  border: 1px solid #b8c8df;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .11em;
+}
+.detail-finalist-badge {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 3px 7px;
+  border: 1px solid #b8c8df;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.admin-panel-head-stacked {
+  align-items: stretch;
+  flex-direction: column;
+}
+.admin-summary-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.admin-global-actions { justify-content: flex-start; }
+.admin-chip-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.status-chip.final { background: #eef3fb; border-color: #bdcce3; color: #304d7d; }
+.status-chip.finalist { background: #f4efff; border-color: #d7c7ef; color: #65488d; }
+
+@media (max-width: 760px) {
+  .vote-summary { align-items: flex-start; flex-direction: column; }
+  .admin-global-actions .btn { flex: 1 1 auto; }
+}
