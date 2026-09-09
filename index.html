@@ -28,8 +28,7 @@
 
   <footer class="site-footer">
     <div class="footer-inner">
-      <p>본 웹페이지는 서울대학교 2026년 가을학기 우주의 진화 수업의 “나의 우주 이야기” 출품작을 감상하기 위해 제작되었습니다.<br>
-        게시된 작품의 저작인격권 및 저작재산권은 창작자인 수강생에게 있으며, 소중한 저작물의 불법복제 및 도용을 금지합니다.</p>
+      <p>본 웹페이지는 서울대학교 2026년 가을학기 우주의 진화 수업의 “나의 우주 이야기” 출품작을 감상하기 위해 제작되었습니다.<br>게시된 작품의 저작인격권 및 저작재산권은 창작자인 수강생에게 있으며, 소중한 저작물의 불법복제 및 도용을 금지합니다.</p>
       <p id="taLine">TA : 김이곤 <span class="muted">(연락처는 config.js에서 입력)</span></p>
       <p>©2026. 우주의 진화 all rights reserved.</p>
     </div>
@@ -46,7 +45,7 @@
       </div>
 
       <label>제목 <span class="required">*</span>
-        <input id="entryTitle" name="title" maxlength="120" required placeholder="예: 17. 홍길동/물리천문학부" />
+        <input id="entryTitle" name="title" maxlength="120" required placeholder="예: 별빛 아래의 우주" />
       </label>
       <div class="form-grid">
         <label>이름
@@ -65,12 +64,38 @@
       </label>
       <label class="checkbox-label">
         <input id="entryConsent" type="checkbox" required />
-        <span>이 게시물은 수업 웹페이지에 공개되며, 본인이 게시 권한을 가진 자료임을 확인합니다.</span>
+        <span>이 작품은 제출 즉시 공개되지 않으며 조교 확인 후 공개될 수 있습니다. 본인이 제출 권한을 가진 자료임을 확인합니다.</span>
       </label>
       <div id="formStatus" class="form-status" role="status"></div>
       <div class="composer-actions">
         <button type="button" id="cancelComposer" class="btn secondary">취소</button>
-        <button type="submit" id="submitEntry" class="btn primary">게시하기</button>
+        <button type="submit" id="submitEntry" class="btn primary">제출하기</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="authDialog" class="composer-dialog auth-dialog">
+    <form id="authForm" class="composer" method="dialog">
+      <div class="composer-head">
+        <div>
+          <p class="eyebrow">AUTHENTICATION</p>
+          <h2>수강생 인증</h2>
+        </div>
+        <button type="button" id="closeAuth" class="icon-btn" aria-label="닫기">×</button>
+      </div>
+      <p class="auth-help">수강생 명단에 등록된 이메일로 6자리 인증 코드를 받아 로그인합니다.</p>
+      <label>이메일
+        <input id="authEmail" type="email" autocomplete="email" required placeholder="student@snu.ac.kr" />
+      </label>
+      <div id="otpArea" hidden>
+        <label>인증 코드
+          <input id="authOtp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6자리 코드" />
+        </label>
+      </div>
+      <div id="authStatus" class="form-status" role="status"></div>
+      <div class="composer-actions">
+        <button type="button" id="sendOtp" class="btn secondary">인증 코드 받기</button>
+        <button type="button" id="verifyOtp" class="btn primary" hidden>로그인</button>
       </div>
     </form>
   </dialog>
@@ -86,8 +111,7 @@
       <div class="home-copy">
         <h1>나의 우주 이야기</h1>
         <p class="semester">2026년 가을학기 우주의 진화</p>
-        <p>본 웹페이지는 서울대학교 2026년 가을학기 우주의 진화 수업의 “나의 우주 이야기”에 출품된 작품들을 감상하기 위해 제작되었습니다.<br>
-          게시된 작품들의 저작인격권 및 저작재산권은 창작자인 수강생들에게 있으며, 소중한 저작물의 불법복제 및 도용을 금지합니다.</p>
+        <p>본 웹페이지는 서울대학교 2026년 가을학기 우주의 진화 수업의 “나의 우주 이야기”에 출품된 작품들을 감상하기 위해 제작되었습니다.<br>게시된 작품들의 저작인격권 및 저작재산권은 창작자인 수강생들에게 있으며, 소중한 저작물의 불법복제 및 도용을 금지합니다.</p>
       </div>
     </section>
   </template>
@@ -99,9 +123,9 @@
         <h2>1. 예선</h2>
         <dl>
           <div><dt>■ 제출 마감</dt><dd><span class="editable-placeholder">추후 공지</span></dd></div>
-          <div><dt>■ 제출 방법</dt><dd>Entries 페이지에 업로드</dd></div>
+          <div><dt>■ 제출 방법</dt><dd>Entries 게시판에 작품 올리기</dd></div>
           <div><dt>■ 제출 양식</dt><dd>시, 소설, 수필, 그림, 음악, 영상 등 자유 양식<br>예선이 익명으로 진행될 경우 작품 파일에 이름이 드러나지 않도록 주의해 주세요.</dd></div>
-          <div><dt>■ 평가 방식</dt><dd>TBD</dd></div>
+          <div><dt>■ 평가 방식</dt><dd>제출 작품은 Entries 게시판에 공개됩니다. 감상 및 투표 일정은 추후 공지됩니다.</dd></div>
         </dl>
       </article>
       <article class="notice-block">
@@ -111,6 +135,7 @@
           <div><dt>■ 수상작 발표</dt><dd><span class="editable-placeholder">추후 공지</span></dd></div>
         </dl>
       </article>
+      <p class="notice-help">날짜가 정해지면 <code>index.html</code>의 Notice 문구만 바꾸면 됩니다.</p>
     </section>
   </template>
 
