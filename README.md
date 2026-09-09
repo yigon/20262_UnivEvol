@@ -1,87 +1,172 @@
 # 2026년 가을학기 우주의 진화 — 나의 우주 이야기
 
-2024년 봄학기 Wix 사이트의 **Home / Notice / Entries / Archive** 구조와 담백한 폭 980px 레이아웃을 참고해 만든 2026년 가을학기 버전입니다.
+GitHub Pages + Supabase용 정적 사이트입니다.
 
-Entries는 Supabase를 백엔드로 사용해 다음 기능을 제공합니다.
+이번 버전의 Entries는 다음 운영 방식을 사용합니다.
 
-- 누구나 새 게시물 작성
-- 이미지 / PDF / 오디오 / 영상 등 다중 파일 첨부
-- 게시물 상세 보기
-- 좋아요 토글 및 좋아요 수 저장
-- 모바일 반응형 레이아웃
-- 별도 빌드 과정 없이 정적 호스팅 가능
+- 수강생은 **이메일 OTP 인증 후** 작품 제출
+- 제출 작품은 기본적으로 **비공개**이며 조교만 열람 가능
+- 조교 화면에서 개별 공개/비공개 및 **대기작 전체 일괄 공개**
+- 이름·학과·제출 이메일은 `entry_private`에 별도 저장
+- 공개 작품의 이름/학과는 조교가 작품별로 공개/숨김 선택
+- 첨부파일은 **private Storage bucket**에 저장
+- 공개된 작품의 첨부파일만 제한시간 signed URL로 감상 가능
+- 투표는 인증된 수강생만 가능
+- `voter_id = auth.uid()`를 기본키로 사용해 **1인 1표**를 DB에서 강제
+- 투표 기간 중 다른 작품으로 표 변경 또는 취소 가능
+- 조교가 Entries의 관리 패널에서 투표 시작/종료 가능
 
-## 1. Supabase 만들기
+## 1. Supabase SQL 업데이트
 
-1. https://supabase.com 에서 무료 프로젝트를 만듭니다.
-2. Dashboard → **SQL Editor**에서 `supabase-schema.sql` 전체를 실행합니다.
-3. Dashboard → **Project Settings / API**에서 아래 두 값을 확인합니다.
-   - Project URL
-   - `anon` 또는 `publishable` key
+Supabase Dashboard → **SQL Editor**에서 `supabase-schema.sql` 전체를 실행합니다.
 
-> `service_role` 키는 절대 웹페이지 코드에 넣지 마세요.
+이 파일은 초기 공개 게시판 버전에서 업그레이드할 수 있게 작성되어 있습니다.
+기존 브라우저 UUID 기반 `likes` 테이블은 삭제되고 공식 `votes` 테이블로 교체됩니다.
 
-## 2. config.js 설정
+### 운영자 이메일 등록
 
-`config.js`의 두 값을 바꿉니다.
+SQL 파일 실행 후 본인이 로그인할 이메일을 등록합니다.
+
+```sql
+insert into public.admin_users (email)
+values ('YOUR_ADMIN_EMAIL@snu.ac.kr')
+on conflict (email) do nothing;
+```
+
+이 이메일로 로그인하면 Entries에 **조교 관리 패널**이 표시됩니다.
+
+### 수강생 이메일 등록
+
+공식 투표를 1인 1표로 제한하려면 실제 수강생 이메일 명단을 등록하는 것이 가장 안전합니다.
+
+```sql
+insert into public.course_roster (email) values
+  ('student1@snu.ac.kr'),
+  ('student2@snu.ac.kr'),
+  ('student3@snu.ac.kr')
+on conflict (email) do nothing;
+```
+
+기본값으로 각 수강생은 제출과 투표 권한을 모두 갖습니다.
+특정 학생의 권한을 따로 끌 수도 있습니다.
+
+```sql
+update public.course_roster
+set can_vote = false
+where email = 'student1@snu.ac.kr';
+```
+
+수강생 명단 자체는 브라우저에서 읽을 수 없게 RLS로 막혀 있습니다.
+
+## 2. Supabase 이메일 OTP 설정
+
+이 사이트는 링크 클릭 방식 대신 **6자리 이메일 OTP**를 사용합니다.
+GitHub Pages의 hash routing과 충돌이 없고 학생 입장에서도 단순합니다.
+
+Supabase Dashboard → **Authentication → Email Templates → Magic Link**에서
+메일 본문에 `{{ .Token }}`을 넣습니다. 예:
+
+```html
+<h2>우주의 진화 수강생 인증</h2>
+<p>인증 코드: <strong>{{ .Token }}</strong></p>
+```
+
+기존 `{{ .ConfirmationURL }}` 링크 대신 `{{ .Token }}`을 사용해야 6자리 코드가 전송됩니다.
+
+## 3. config.js
+
+기존과 동일하게 Project URL과 browser용 anon/publishable key만 입력합니다.
 
 ```js
 export const SUPABASE_URL = "https://xxxx.supabase.co";
-export const SUPABASE_ANON_KEY = "eyJ...";
+export const SUPABASE_ANON_KEY = "sb_publishable_...";
 ```
 
-조교 연락처도 같은 파일에서 바꿀 수 있습니다.
+`service_role` 키는 절대 GitHub 저장소나 브라우저 코드에 넣지 마세요.
 
-```js
-export const SITE_CONFIG = {
-  taLine: "TA : 김이곤 your-email@snu.ac.kr",
-  storageBucket: "entry-media",
-  maxFileSizeMB: 50,
-};
-```
+## 4. 제출 흐름
 
-## 3. 로컬 미리보기
+1. 수강생이 Entries → **작품 제출** 클릭
+2. 수강생 이메일로 6자리 OTP 인증
+3. 제목 / 이름 / 학과 / 본문 / 첨부파일 입력
+4. 제출 완료
+5. 작품과 첨부파일은 공개 사이트에서는 보이지 않음
+6. 조교 계정으로 로그인하면 관리 패널에서 대기작 확인
+7. `공개` 또는 `대기작 전체 공개`로 공개
 
-ES module을 사용하므로 `index.html`을 파일로 직접 더블클릭하기보다 간단한 로컬 서버를 쓰는 편이 안전합니다.
+제목 자체에 이름을 쓰면 개인정보 숨김 기능으로 가릴 수 없으므로 제목 입력 예시는 이름 없는 형태로 바꾸었습니다. 또한 원본 첨부파일 이름도 공개 메타데이터에 저장하지 않고 `첨부파일_1.pdf` 같은 일반 이름으로 바꿉니다.
 
-```bash
-cd evoluniverse-2026-fall
-python -m http.server 8000
-```
+단, 작품 본문·이미지·PDF 내용 자체에 이름이나 학번이 들어 있으면 자동으로 제거되지는 않으므로 익명 공개가 필요할 때는 작품 내용도 확인해야 합니다.
 
-브라우저에서 `http://localhost:8000`을 엽니다.
+## 5. 이름 / 학과 공개
 
-## 4. 배포
+제출 당시 이름과 학과는 `entry_private`에 저장되어 **조교만 확인**할 수 있습니다.
 
-가장 간단한 방법은 GitHub Pages / Netlify / Vercel 중 하나에 이 폴더 그대로 올리는 것입니다. 빌드 명령은 필요 없습니다.
+조교 관리 패널의 `이름 공개` 버튼을 누르면 해당 작품의 공개용 필드에 이름/학과가 복사됩니다.
+`이름 숨기기`를 누르면 공개용 필드는 다시 `NULL`이 됩니다.
 
-### GitHub Pages 예시
+즉 단순 CSS 숨김이 아니라 공개 API에서도 개인정보가 빠집니다.
 
-1. 새 GitHub repository를 만듭니다.
-2. 이 폴더의 파일을 repository 최상위에 업로드합니다.
-3. Settings → Pages → Deploy from a branch → `main` / `/root`를 선택합니다.
+## 6. 첨부파일 보안
 
-## 5. 공지사항 수정
+`entry-media` bucket은 이제 **private**입니다.
 
-`index.html` 안의 `noticeTemplate`을 찾아 제출 마감, 본선 일정 등을 바꾸면 됩니다. 현재 일정이 확정되지 않은 부분은 노란색 `추후 공지` 표시로 두었습니다.
+- 비공개 제출물: 조교만 읽기 가능
+- 공개 작품: 방문자에게 signed URL 발급 가능
+- 제출자도 제출 후 비공개 파일을 다시 열람할 권한은 기본적으로 없음
 
-## 6. 좋아요 방식
-
-각 브라우저에 무작위 UUID를 하나 저장하고, `(게시물 ID, 브라우저 UUID)` 조합을 중복 저장하지 못하게 해 **같은 브라우저에서 게시물당 좋아요 1회**로 동작합니다.
-
-이 방식은 수업 감상용 “좋아요”에는 가볍고 편하지만, **공식 투표**처럼 1인 1표를 강제하는 용도에는 충분하지 않습니다. 브라우저 저장소를 초기화하거나 다른 기기를 사용하면 다시 좋아요를 누를 수 있기 때문입니다. 공식 투표가 필요하면 SNU 계정 로그인이나 별도의 인증 기반 투표 기능을 붙이는 것이 안전합니다.
-
-## 7. 운영상 주의
-
-현재 SQL 정책은 요청대로 “누구나 게시 가능”하게 열어 두었습니다. 외부에 널리 공개할 경우 스팸 게시물이 올라올 수 있습니다. 수업 구성원만 글을 올리게 하려면 다음 단계에서 **업로드 비밀번호**, **Supabase Auth**, 또는 **SNU 계정 인증**을 붙이는 것을 권장합니다.
-
-## 파일 구조
+파일 경로는 다음처럼 작품 UUID 아래에 저장됩니다.
 
 ```text
-index.html            페이지 구조 / 공지 / Archive
-styles.css            기존 Wix 스타일을 참고한 레이아웃
-app.js                Entries, 업로드, 상세보기, 좋아요 기능
-config.js             Supabase 및 TA 정보
-supabase-schema.sql   DB / Storage / RLS 생성
-README.md             설치·배포 안내
+entry-media/<ENTRY_UUID>/<RANDOM_UUID>.pdf
 ```
+
+개별 파일 최대 크기는 기존과 동일하게 50MB입니다.
+
+## 7. 투표 방식
+
+기존의 브라우저 UUID 좋아요는 제거했습니다.
+
+현재 방식은:
+
+```text
+인증 이메일 → Supabase Auth user → auth.uid() → votes.voter_id
+```
+
+이며 `votes.voter_id` 자체가 Primary Key입니다.
+따라서 같은 로그인 계정으로 두 작품에 동시에 투표할 수 없습니다.
+
+- 다른 작품을 누르면 기존 표가 새 작품으로 이동
+- 현재 선택 작품을 다시 누르면 표 취소
+- 투표가 닫혀 있으면 DB 정책에서도 INSERT / UPDATE / DELETE 거부
+
+단, **한 사람이 서로 다른 이메일 계정을 여러 개 갖고 있고 그 이메일들을 모두 roster에 등록했다면** 여러 표가 가능하므로, course roster에는 실제 1인당 하나의 공식 이메일만 등록해야 합니다.
+
+## 8. 조교 관리 패널
+
+`admin_users`에 등록된 이메일로 로그인하면 Entries 상단에 관리 패널이 생깁니다.
+
+가능한 작업:
+
+- 비공개 대기작 및 제출자 정보 확인
+- 작품별 공개 / 비공개
+- 대기작 전체 일괄 공개
+- 작품별 이름·학과 공개 / 숨김
+- 투표 시작 / 종료
+
+## 9. GitHub Pages 배포
+
+파일을 repository 최상위에 올리고 기존처럼 GitHub Pages에서 `main / root`를 배포하면 됩니다.
+빌드 과정은 없습니다.
+
+```text
+index.html
+styles.css
+app.js
+config.js
+supabase-schema.sql
+README.md
+assets/
+```
+
+수정 후 GitHub Actions의 Pages deployment가 완료되면 반영됩니다.
