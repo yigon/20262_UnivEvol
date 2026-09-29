@@ -4,7 +4,7 @@ export const SUPABASE_URL = "https://sqfeemilsbuvrnbnuqxs.supabase.co";
 export const SUPABASE_ANON_KEY = "sb_publishable_4cwTZ-m0EVza9BZGtzCSrg_pqIj6QIS";
 
 export const SITE_CONFIG = {
-  taLine: "TA : 김이곤 (yigon28@snu.ac.kr), 현동환 (hdhd333@snu.ac.kr)",
+  taLine: "TA : 김이곤 (yigon28@snu.ac.kr)",
   storageBucket: "entry-media",
   maxFileSizeMB: 50,
 };
