@@ -1,6 +1,10 @@
 # 2026년 가을학기 우주의 진화 — 나의 우주 이야기
 
-GitHub Pages + Supabase용 정적 사이트입니다.
+GitHub Pages + Supabase Auth/DB + Cloudflare R2용 정적 사이트입니다.
+
+> **2026-11-25 신규 저장소 변경:** 앞으로 제출하는 **모든 형식의 첨부파일은 Cloudflare R2**로 업로드합니다. 기존 Supabase Storage 첨부는 그대로 유지합니다. **이번 업데이트는 `supabase-schema.sql` 전체 재실행이 아니라 `supabase/migrations/202611250001_r2_storage.sql`만 실행해야 합니다.** 실제 설정과 배포 순서는 [R2_SETUP.md](R2_SETUP.md)를 먼저 읽어 주세요.
+
+---
 
 이번 버전은 다음 운영 흐름을 사용합니다.
 
@@ -23,13 +27,9 @@ GitHub Pages + Supabase용 정적 사이트입니다.
 
 ---
 
-## 1. 이번 업데이트에서 반드시 SQL을 다시 실행
+## 1. 기존 운영형 스키마 소개 (현재 운영 DB에서는 재실행 금지)
 
-Google OAuth 전환 때와 달리 이번 업데이트는 DB 구조가 바뀝니다.
-
-Supabase Dashboard → **SQL Editor**에서 새 `supabase-schema.sql` 전체를 실행하세요.
-
-기존 보안형 스키마 위에 실행할 수 있도록 작성되어 있습니다.
+아래 설명은 기존 운영형 스키마의 구성에 대한 기록입니다. **이미 게시물이 있는 현재 DB에서는 `supabase-schema.sql` 전체를 다시 실행하지 마세요.** R2 추가는 별도 SQL migration 파일만 실행하며, 설정 및 백업 지침은 [R2_SETUP.md](R2_SETUP.md)를 참고하세요.
 
 변경되는 주요 항목:
 
@@ -216,58 +216,23 @@ DB에서 다음 규칙을 강제합니다.
 
 ---
 
-## 8. 게시물 삭제
+## 8. 게시물 삭제 (Supabase + R2 공존)
 
-조교 관리 패널에 **삭제** 버튼이 있습니다.
-
-삭제 확인 후:
-
-1. `entries` 행 삭제
-2. FK cascade로 `entry_private` 삭제
-3. FK cascade로 그 작품의 `votes` 삭제
-4. 첨부파일 경로를 Supabase Storage에서 삭제
-
-Storage 삭제에 실패해도 DB 게시물은 이미 삭제된 상태이므로, 경고 메시지와 함께 Storage에서 해당 UUID 폴더를 확인하도록 안내합니다.
-
----
+조교 관리 패널의 **삭제** 버튼은 서버 측 `r2-storage` Edge Function을 호출합니다. 기존 Supabase 파일과 신규 R2 파일을 각각 해당 저장소에서 먼저 삭제한 후 게시글, 제출자 개인정보, 투표 기록을 삭제합니다. 일시적인 Storage 오류가 발생하면 게시글을 유지해 다시 시도할 수 있습니다.
 
 ## 9. 첨부파일 보안
 
-`entry-media` bucket은 private입니다.
-
-- `hidden`: 조교만 열람
-- `preliminary` / `final`: signed URL을 통해 공개 작품 파일 열람
-- 업로드 권한은 제출자의 자기 비공개 작품 또는 조교만 허용
-
-개별 파일 최대 크기는 기존과 동일하게 50MB입니다.
-
----
+- 기존 작품은 private Supabase Storage에 그대로 남습니다 (`storage` 메타데이터가 없는 경우).
+- 신규 작품은 형식에 관계없이 private Cloudflare R2에 저장합니다 (`storage: "r2"`).
+- 모든 첨부파일은 작품의 공개 단계와 조교 권한에 따라 서명된 URL을 발급받습니다.
+- 신규 파일은 파일당 기본 2GiB, 한 게시글당 최대 20개로 제한합니다. Edge Function secrets에서 조정할 수 있습니다.
+- 기존 Supabase 50MB 제한은 **기존 Storage 쪽에만** 계속 적용됩니다.
 
 ## 10. 배포
 
-다음 파일을 GitHub repository 최상위에 교체합니다.
+**자세한 단계는 [R2_SETUP.md](R2_SETUP.md) 참고.** 간단히 요약하면 Cloudflare R2 private bucket 및 CORS 구성 → R2 credentials를 Supabase secrets에 추가 → Edge Function 배포 → `202611250001_r2_storage.sql` 실행 → 새 `app.js`/`index.html`을 GitHub Pages에 배포하는 순서입니다.
 
-```text
-index.html
-styles.css
-app.js
-supabase-schema.sql
-README.md
-```
-
-기존 `config.js`와 `assets/`는 그대로 유지하면 됩니다.
-
-순서 권장:
-
-1. Supabase SQL Editor에서 새 `supabase-schema.sql` 실행
-2. SQL 오류가 없는지 확인
-3. GitHub에 새 `app.js`, `styles.css`, `index.html` 업로드
-4. Commit / push
-5. GitHub Pages deployment 완료 확인
-6. 조교 Google 로그인
-7. 테스트 작품 1개 제출
-8. 예선 공개 → 본선 지정 → 본선 공개 → 삭제까지 테스트
-9. 학생 테스트 계정으로 3표 제한 및 본인 작품 금지 확인
+이 ZIP에는 기존 `config.js`, `styles.css`, `assets/`도 원형대로 포함했습니다. R2 비밀 키는 포함하지 않았으며 브라우저 코드에 추가해서도 안 됩니다.
 
 ---
 
