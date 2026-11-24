@@ -6,5 +6,4 @@ export const SUPABASE_ANON_KEY = "sb_publishable_4cwTZ-m0EVza9BZGtzCSrg_pqIj6QIS
 export const SITE_CONFIG = {
   taLine: "TA : 김이곤 (yigon28@snu.ac.kr)",
   storageBucket: "entry-media",
-  maxFileSizeMB: 50,
 };
