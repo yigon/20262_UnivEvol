@@ -195,34 +195,72 @@ async function loadPublishedEntries() {
   await loadVoteState();
 }
 
+// Files submitted before the migration have no `storage` field: treat them as Supabase.
+function storageOf(file) {
+  return file.storage === "r2" ? "r2" : "supabase";
+}
+
+async function r2Request(action, payload = {}) {
+  const { data, error } = await supabase.functions.invoke("r2-storage", {
+    body: { action, ...payload },
+  });
+  if (error) {
+    let explanation = error.message || "R2 파일 처리 요청에 실패했습니다.";
+    try {
+      const response = error.context;
+      if (response?.json) {
+        const details = await response.json();
+        explanation = details.error || explanation;
+      }
+    } catch { /* keep the underlying network error */ }
+    throw new Error(explanation);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
 async function attachSignedUrls(entries) {
-  const paths = [];
+  const supabasePaths = [];
+  const r2Files = [];
   for (const entry of entries) {
     for (const file of Array.isArray(entry.attachments) ? entry.attachments : []) {
-      if (file.path) paths.push(file.path);
+      if (!file.path) continue;
+      if (storageOf(file) === "r2") r2Files.push({ entryId: entry.id, path: file.path });
+      else supabasePaths.push(file.path);
     }
   }
-  if (!paths.length) return entries;
+  const supabaseUrls = new Map();
+  const r2Urls = new Map();
 
-  const uniquePaths = [...new Set(paths)];
-  const { data, error } = await supabase.storage
-    .from(SITE_CONFIG.storageBucket)
-    .createSignedUrls(uniquePaths, 1800);
-  if (error) {
-    console.error(error);
-    return entries;
+  if (supabasePaths.length) {
+    for (let i = 0; i < supabasePaths.length; i += 100) {
+      const paths = [...new Set(supabasePaths.slice(i, i + 100))];
+      const { data, error } = await supabase.storage.from(SITE_CONFIG.storageBucket)
+        .createSignedUrls(paths, 1800);
+      if (error) console.error("Legacy Supabase URLs:", error);
+      else for (const item of data || []) {
+        if (item?.path && item?.signedUrl) supabaseUrls.set(item.path, item.signedUrl);
+      }
+    }
   }
 
-  const urlMap = new Map();
-  for (const item of data || []) {
-    if (item?.path && item?.signedUrl) urlMap.set(item.path, item.signedUrl);
+  if (r2Files.length) {
+    for (let i = 0; i < r2Files.length; i += 100) {
+      try {
+        const { items } = await r2Request("sign-read", { files: r2Files.slice(i, i + 100) });
+        for (const item of items || []) r2Urls.set(`${item.entryId}:${item.path}`, item.url);
+      } catch (error) {
+        console.error("R2 URL signing failed:", error);
+      }
+    }
   }
-
   return entries.map((entry) => ({
     ...entry,
     attachments: (Array.isArray(entry.attachments) ? entry.attachments : []).map((file) => ({
       ...file,
-      url: file.path ? (urlMap.get(file.path) || "") : "",
+      url: storageOf(file) === "r2"
+        ? r2Urls.get(`${entry.id}:${file.path}`) || ""
+        : supabaseUrls.get(file.path) || "",
     })),
   }));
 }
@@ -591,30 +629,18 @@ async function setFinalist(id, value) {
 }
 
 async function deleteEntryAsAdmin(entry) {
-  const paths = (Array.isArray(entry.attachments) ? entry.attachments : [])
-    .map((file) => file.path)
-    .filter(Boolean);
-
   const ok = confirm(
-    `“${entry.title}” 작품을 완전히 삭제할까요?\n\n게시물, 제출자 개인정보, 해당 작품의 투표 기록이 함께 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`
+    `“${entry.title}” 작품을 완전히 삭제할까요?\n\n기존 Supabase 및 신규 R2 첨부파일, 제출자 개인정보, 투표 기록을 함께 삭제합니다. 이 작업은 되돌릴 수 없습니다.`
   );
   if (!ok) return;
 
-  const { error: deleteError } = await supabase.from("entries").delete().eq("id", entry.id);
-  if (deleteError) {
-    alert(`게시물 삭제 실패: ${deleteError.message}`);
-    return;
+  try {
+    await r2Request("admin-delete-entry", { entryId: entry.id });
+    await renderEntries();
+  } catch (error) {
+    console.error(error);
+    alert(`삭제 중 문제가 발생했습니다. 관리자에게 알려 주세요. 재시도할 수 있도록 게시물은 유지됩니다.\n${error.message}`);
   }
-
-  if (paths.length) {
-    const { error: storageError } = await supabase.storage.from(SITE_CONFIG.storageBucket).remove(paths);
-    if (storageError) {
-      console.error(storageError);
-      alert("게시물은 삭제되었지만 첨부파일 정리에 실패했습니다. Supabase Storage에서 해당 작품 폴더를 확인해 주세요.");
-    }
-  }
-
-  await renderEntries();
 }
 
 async function setVotingState(round, open) {
@@ -634,7 +660,7 @@ async function renderAdminPanel() {
   const [{ data: allEntries, error: entryError }, { data: privateRows, error: privateError }] = await Promise.all([
     supabase
       .from("entries")
-      .select("id,title,attachments,is_published,show_author,public_author,public_department,created_at,published_at,publication_stage,is_finalist")
+      .select("id,title,attachments,is_published,show_author,public_author,public_department,created_at,published_at,publication_stage,is_finalist,upload_state")
       .order("is_finalist", { ascending: false })
       .order("created_at", { ascending: false }),
     supabase
@@ -645,19 +671,22 @@ async function renderAdminPanel() {
   if (privateError) throw privateError;
 
   const privateMap = new Map((privateRows || []).map((row) => [row.entry_id, row]));
-  const pending = (allEntries || []).filter((entry) => entry.publication_stage === "hidden");
-  const preliminary = (allEntries || []).filter((entry) => entry.publication_stage === "preliminary");
-  const finalPublished = (allEntries || []).filter((entry) => entry.publication_stage === "final");
-  const finalists = (allEntries || []).filter((entry) => entry.is_finalist);
+  const completedEntries = (allEntries || []).filter((entry) => entry.upload_state !== "uploading");
+  const uploadingCount = (allEntries || []).length - completedEntries.length;
+  const pending = completedEntries.filter((entry) => entry.publication_stage === "hidden");
+  const preliminary = completedEntries.filter((entry) => entry.publication_stage === "preliminary");
+  const finalPublished = completedEntries.filter((entry) => entry.publication_stage === "final");
+  const finalists = completedEntries.filter((entry) => entry.is_finalist);
 
   host.innerHTML = `
     <section class="admin-panel">
       <div class="admin-panel-head admin-panel-head-stacked">
         <div class="admin-summary-line">
           <strong>조교 관리</strong>
-          <span class="muted">대기 ${pending.length} · 예선 공개 ${preliminary.length} · 본선 공개 ${finalPublished.length} · 본선 진출 ${finalists.length}</span>
+          <span class="muted">대기 ${pending.length} · 예선 공개 ${preliminary.length} · 본선 공개 ${finalPublished.length} · 본선 진출 ${finalists.length}${uploadingCount ? ` · 업로드 진행/미완료 ${uploadingCount}` : ""}</span>
         </div>
         <div class="admin-actions admin-global-actions">
+          <button id="pruneStaleUploads" class="btn secondary" title="24시간 이상 방치된 비공개 업로드를 정리합니다.">미완료 업로드 정리</button>
           <button id="publishAllPreliminary" class="btn primary" ${pending.length ? "" : "disabled"}>대기작 전체 예선 공개</button>
           <button id="publishAllFinalists" class="btn secondary" ${finalists.length ? "" : "disabled"}>본선 진출작 전체 본선 공개</button>
           ${access.voting_open
@@ -668,7 +697,7 @@ async function renderAdminPanel() {
         </div>
       </div>
       <div class="admin-list">
-        ${(allEntries || []).map((entry) => {
+        ${completedEntries.map((entry) => {
           const priv = privateMap.get(entry.id) || {};
           const authorLabel = [priv.author_name, priv.department].filter(Boolean).map(escapeHtml).join(" · ") || "이름 미입력";
           const email = escapeHtml(priv.submitted_email || "이메일 정보 없음");
@@ -704,6 +733,17 @@ async function renderAdminPanel() {
     button.addEventListener("click", () => {
       location.hash = `#entry/${button.dataset.adminOpen}`;
     });
+  });
+
+  document.querySelector("#pruneStaleUploads")?.addEventListener("click", async () => {
+    if (!confirm("24시간 이상 미완료 상태인 제출과 삭제 후 남은 R2 파일을 정리할까요?")) return;
+    try {
+      const result = await r2Request("admin-prune-stale");
+      alert(`정리 완료: 미완료 제출 ${result.prunedEntries}개, 고아 파일 ${result.prunedObjects}개`);
+      await renderEntries();
+    } catch (error) {
+      alert(`업로드 정리 실패: ${error.message}`);
+    }
   });
 
   document.querySelector("#publishAllPreliminary")?.addEventListener("click", async () => {
@@ -845,43 +885,70 @@ function closeComposer() {
   formStatus.classList.remove("error");
 }
 
-function prepareAttachmentMetadata(files, entryId) {
-  return files.map((file, index) => {
-    if (file.size > SITE_CONFIG.maxFileSizeMB * 1024 * 1024) {
-      throw new Error(`${file.name}: 파일 크기가 ${SITE_CONFIG.maxFileSizeMB}MB를 초과합니다.`);
-    }
-    const ext = file.name.includes(".") ? file.name.split(".").pop() : "bin";
-    const publicName = `첨부파일_${index + 1}.${ext}`;
-    return {
-      name: publicName,
-      type: file.type,
-      path: `${entryId}/${crypto.randomUUID()}.${ext}`,
+// Browser uploads large files directly to private R2 via presigned URLs.
+// The file's bytes never pass through GitHub Pages or Supabase Storage.
+function putR2WithProgress(url, blob, headers = {}, onProgress = () => {}) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url, true);
+    for (const [header, value] of Object.entries(headers)) xhr.setRequestHeader(header, value);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded, event.total);
     };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`R2 HTTP ${xhr.status}: 파일 업로드에 실패했습니다.`));
+    };
+    xhr.onerror = () => reject(new Error("R2 연결 오류: CORS 설정 또는 인터넷 연결을 확인해 주세요."));
+    xhr.onabort = () => reject(new Error("R2 업로드가 중단되었습니다."));
+    xhr.send(blob);
   });
 }
 
-async function uploadPreparedFiles(files, metadata) {
-  const uploadedPaths = [];
-  try {
-    for (let index = 0; index < files.length; index += 1) {
-      const file = files[index];
-      const meta = metadata[index];
-      formStatus.textContent = `파일 업로드 중… (${index + 1}/${files.length})`;
-      const { error } = await supabase.storage.from(SITE_CONFIG.storageBucket).upload(meta.path, file, {
-        cacheControl: "3600",
-        contentType: file.type || undefined,
-        upsert: false,
-      });
-      if (error) throw error;
-      uploadedPaths.push(meta.path);
+function updateUploadProgress(index, total, completedBytes, sendingBytes, size) {
+  const percent = Math.min(100, Math.floor(100 * (completedBytes + sendingBytes) / size));
+  formStatus.textContent = `R2 업로드 중 (${index + 1}/${total}) · ${percent}%`;
+}
+
+async function uploadFileToR2(file, entryId, index, total) {
+  const started = await r2Request("start-upload", {
+    entryId, name: file.name, type: file.type, size: file.size,
+  });
+
+  if (started.mode === "single") {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await putR2WithProgress(started.url, file, started.headers,
+          (loaded) => updateUploadProgress(index, total, 0, loaded, file.size));
+        break;
+      } catch (error) {
+        if (attempt === 2) throw error;
+      }
     }
-    return uploadedPaths;
-  } catch (error) {
-    if (uploadedPaths.length) {
-      await supabase.storage.from(SITE_CONFIG.storageBucket).remove(uploadedPaths);
+  } else if (started.mode === "multipart") {
+    const partSize = started.partSize;
+    for (let part = 0; part < started.partCount; part += 1) {
+      const start = part * partSize;
+      const slice = file.slice(start, Math.min(file.size, start + partSize));
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const { url } = await r2Request("sign-part", {
+            uploadId: started.uploadId, partNumber: part + 1,
+          });
+          await putR2WithProgress(url, slice, {},
+            (loaded) => updateUploadProgress(index, total, start, loaded, file.size));
+          break;
+        } catch (error) {
+          if (attempt === 2) throw error;
+        }
+      }
     }
-    throw error;
+  } else {
+    throw new Error("알 수 없는 R2 업로드 방식입니다.");
   }
+
+  formStatus.textContent = `파일 검증 중… (${index + 1}/${total})`;
+  await r2Request("finish-upload", { uploadId: started.uploadId });
 }
 
 entryForm.addEventListener("submit", async (event) => {
@@ -900,6 +967,8 @@ entryForm.addEventListener("submit", async (event) => {
   submitEntry.disabled = true;
   formStatus.classList.remove("error");
   let entryId = null;
+  let submissionCompleted = false;
+  let entryCreated = false;
 
   try {
     const title = document.querySelector("#entryTitle").value.trim();
@@ -914,28 +983,41 @@ entryForm.addEventListener("submit", async (event) => {
     if (!body && !files.length) throw new Error("본문 또는 첨부 파일 중 하나는 있어야 합니다.");
 
     entryId = crypto.randomUUID();
-    const attachments = prepareAttachmentMetadata(files, entryId);
 
     formStatus.textContent = "비공개 제출 정보를 저장하는 중…";
     const { error: submitError } = await supabase.rpc("submit_entry", {
       p_id: entryId,
       p_title: title,
       p_body: body,
-      p_attachments: attachments,
+      p_attachments: [],
       p_author_name: author,
       p_department: department,
     });
     if (submitError) throw submitError;
+    entryCreated = true;
 
-    if (files.length) await uploadPreparedFiles(files, attachments);
+    for (let index = 0; index < files.length; index += 1) {
+      await uploadFileToR2(files[index], entryId, index, files.length);
+    }
+    formStatus.textContent = "제출 완료 상태를 기록하는 중…";
+    await r2Request("finish-submission", { entryId });
+    submissionCompleted = true;
 
     closeComposer();
     alert("제출이 완료되었습니다. 작품은 조교 확인 전까지 다른 사람에게 보이지 않습니다.");
     await renderEntries();
   } catch (error) {
     console.error(error);
-    if (entryId) {
-      await supabase.rpc("delete_own_pending_entry", { p_entry_id: entryId });
+    if (entryId && entryCreated && !submissionCompleted) {
+      try {
+        await r2Request("cancel-submission", { entryId });
+      } catch (cleanupError) {
+        console.error("R2 cleanup failed:", cleanupError);
+        formStatus.textContent = "제출 또는 정리 중 오류가 발생했습니다. 조교에게 알려 주세요. "
+          + (error.message || "") + " / 정리: " + cleanupError.message;
+        formStatus.classList.add("error");
+        return;
+      }
     }
     formStatus.textContent = error.message || "제출 중 오류가 발생했습니다.";
     formStatus.classList.add("error");
