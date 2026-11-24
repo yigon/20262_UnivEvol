@@ -1,0 +1,4 @@
+[functions.r2-storage]
+# 공개된 작품의 읽기 URL은 비로그인 방문자도 발급받아야 하므로
+# 게이트웨이 JWT 검증을 끄고, 함수 내부에서 모든 쓰기/비공개 읽기를 검증합니다.
+verify_jwt = false
