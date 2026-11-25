@@ -382,12 +382,19 @@ async function signRead(
     if (ownerError) throw ownerError;
     for (const row of privateRows || []) owners.set(row.entry_id, row.submitted_by);
   }
-  const visible = new Map((entries || []).filter((entry) =>
+  // Explicit tuple and Map value types prevent inference as Map<unknown, unknown>.
+  type ReadableEntry = {
+    id: string;
+    attachments: unknown;
+    publication_stage: string;
+    upload_state: string;
+  };
+  const visible = new Map<string, ReadableEntry>((entries || []).filter((entry) =>
     administrator
     || (entry.publication_stage !== "hidden" && entry.upload_state === "ready")
     || (entry.publication_stage === "hidden" && entry.upload_state === "ready"
       && identity !== null && owners.get(entry.id) === identity.id)
-  ).map((entry) => [entry.id, entry]));
+  ).map((entry): [string, ReadableEntry] => [entry.id, entry]));
 
   const signed = [];
   for (const file of valid) {
