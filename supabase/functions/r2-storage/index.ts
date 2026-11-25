@@ -1,7 +1,7 @@
 /**
  * Supabase Edge Function: R2 storage adapter for UnivEvol.
  *
- * Public:  sign-read (only published entries, or verified admin for hidden entries).
+ * Public: sign-read (published entries; completed hidden entries for submitter/admin).
  * Private: start-upload, sign-part, finish-upload, finish-submission,
  *          cancel-submission, admin-delete-entry.
  *
@@ -26,10 +26,14 @@ import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3";
 
 const MB = 1024 * 1024;
 const PART_SIZE = 16 * MB;           // R2 parts must be >= 5 MiB (except the final part).
-const MULTIPART_AT = 32 * MB;
+// The current course deployment deliberately uses single PUTs. Multipart has
+// shown Edge Runtime stream errors with 90MB submissions; the configured 2GiB
+// per-file cap is below R2's 5GiB single-PUT maximum.
+const MULTIPART_AT = Number.POSITIVE_INFINITY;
 const UPLOAD_URL_TTL = 900;        // 15 minutes, enough for a slow 16 MiB part.
 const READ_URL_TTL = 3600;         // 1 hour for videos seeking/range requests.
-const MAX_BYTES = Number(Deno.env.get("R2_MAX_FILE_BYTES") || 2 * 1024 ** 3);
+// Single PUT is supported by R2 up to 5GiB; never offer a larger limit.
+const MAX_BYTES = Math.min(5 * 1024 ** 3, Number(Deno.env.get("R2_MAX_FILE_BYTES") || 2 * 1024 ** 3));
 const MAX_FILES = Number(Deno.env.get("R2_MAX_FILES_PER_ENTRY") || 20);
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -352,7 +356,11 @@ async function pruneStaleUploads() {
   return { ok: true, prunedEntries, prunedObjects };
 }
 
-async function signRead(body: Record<string, unknown>, administrator: boolean) {
+async function signRead(
+  body: Record<string, unknown>,
+  administrator: boolean,
+  identity: { id: string; email: string } | null,
+) {
   const files = body.files;
   ensure(Array.isArray(files) && files.length <= 100, "한 번에 최대 100개 파일의 주소를 요청할 수 있습니다.");
   if (!files.length) return { items: [] };
@@ -362,8 +370,23 @@ async function signRead(body: Record<string, unknown>, administrator: boolean) {
   const { data: entries, error } = await admin.from("entries")
     .select("id,attachments,publication_stage,upload_state").in("id", ids);
   if (error) throw error;
+  // The private table is queried only on the server. Never trust the entryId
+  // supplied by the browser as evidence of ownership.
+  const hiddenIds = (entries || []).filter((entry) =>
+    entry.publication_stage === "hidden" && entry.upload_state === "ready"
+  ).map((entry) => entry.id);
+  const owners = new Map<string, string>();
+  if (identity && hiddenIds.length && !administrator) {
+    const { data: privateRows, error: ownerError } = await admin.from("entry_private")
+      .select("entry_id,submitted_by").in("entry_id", hiddenIds);
+    if (ownerError) throw ownerError;
+    for (const row of privateRows || []) owners.set(row.entry_id, row.submitted_by);
+  }
   const visible = new Map((entries || []).filter((entry) =>
-    administrator || (entry.publication_stage !== "hidden" && entry.upload_state === "ready")
+    administrator
+    || (entry.publication_stage !== "hidden" && entry.upload_state === "ready")
+    || (entry.publication_stage === "hidden" && entry.upload_state === "ready"
+      && identity !== null && owners.get(entry.id) === identity.id)
   ).map((entry) => [entry.id, entry]));
 
   const signed = [];
@@ -405,7 +428,7 @@ Deno.serve(async (req) => {
       ? await isAdmin(identity) : false;
 
     let result: unknown;
-    if (action === "sign-read") result = await signRead(body, administrator);
+    if (action === "sign-read") result = await signRead(body, administrator, identity);
     else if (action === "start-upload") result = await startUpload(body, requiredIdentity(identity));
     else if (action === "sign-part") result = await signPart(body, requiredIdentity(identity));
     else if (action === "finish-upload") result = await finishUpload(body, requiredIdentity(identity));
