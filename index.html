@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="2026년 가을학기 우주의 진화 - 나의 우주 이야기 출품작 전시" />
+  <title>2026년 가을학기 우주의 진화</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="site-title" href="#home" aria-label="홈으로">2026년 가을학기 우주의 진화</a>
+      <button class="menu-toggle" id="menuToggle" aria-label="메뉴 열기" aria-expanded="false">☰</button>
+      <nav class="main-nav" id="mainNav" aria-label="주 메뉴">
+        <a href="#home" data-route="home">Home</a>
+        <a href="#notice" data-route="notice">Notice</a>
+        <a href="#entries" data-route="entries">Entries</a>
+        <a href="#archive" data-route="archive">Archive</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="app" class="page-shell" aria-live="polite"></main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <p>본 웹페이지는 서울대학교 2026년 가을학기 우주의 진화 수업의 “나의 우주 이야기” 출품작을 감상하기 위해 제작되었습니다.<br>게시된 작품의 저작인격권 및 저작재산권은 창작자인 수강생에게 있으며, 소중한 저작물의 불법복제 및 도용을 금지합니다.</p>
+      <p id="taLine">TA : 김이곤 <span class="muted">(연락처는 config.js에서 입력)</span></p>
+      <p>©2026. 우주의 진화 all rights reserved.</p>
+    </div>
+  </footer>
+
+  <dialog id="composerDialog" class="composer-dialog">
+    <form id="entryForm" class="composer" method="dialog">
+      <div class="composer-head">
+        <div>
+          <p class="eyebrow">ENTRIES</p>
+          <h2>새 게시물 올리기</h2>
+        </div>
+        <button type="button" id="closeComposer" class="icon-btn" aria-label="닫기">×</button>
+      </div>
+
+      <label>제목 <span class="required">*</span>
+        <input id="entryTitle" name="title" maxlength="120" required placeholder="예: 별빛 아래의 우주" />
+      </label>
+      <div class="form-grid">
+        <label>이름 <span class="required">*</span>
+          <input id="entryAuthor" name="author" maxlength="80" required placeholder="이름을 입력하세요" />
+        </label>
+        <label>학과/학부 <span class="required">*</span>
+          <input id="entryDepartment" name="department" maxlength="100" required placeholder="학과/학부를 입력하세요" />
+        </label>
+      </div>
+      <label>내용
+        <textarea id="entryBody" name="body" rows="9" maxlength="12000" placeholder="작품 소개나 본문을 입력하세요. 줄바꿈은 그대로 유지됩니다."></textarea>
+      </label>
+      <label>첨부 파일
+        <input id="entryFiles" name="files" type="file" multiple />
+        <small>형식과 관계없이 모든 신규 첨부파일은 비공개 R2에 업로드됩니다. 파일당 기본 상한은 2GiB이며 단일 PUT 방식으로 전송합니다.</small>
+      </label>
+      <label class="checkbox-label">
+        <input id="entryConsent" type="checkbox" required />
+        <span>이 작품은 제출 즉시 공개되지 않습니다. 예선 공개 시 이름과 학과/학부는 비공개되며, 본선 진출 후 본선 공개 시 해당 정보가 공개될 수 있습니다. 본인이 제출 권한을 가진 자료임을 확인합니다.</span>
+      </label>
+      <div id="formStatus" class="form-status" role="status"></div>
+      <div class="composer-actions">
+        <button type="button" id="cancelComposer" class="btn secondary">취소</button>
+        <button type="submit" id="submitEntry" class="btn primary">제출하기</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="editDialog" class="composer-dialog edit-dialog">
+    <form id="editForm" class="composer">
+      <div class="composer-head">
+        <div>
+          <p class="eyebrow">ENTRIES / EDIT</p>
+          <h2>내 비공개 작품 수정</h2>
+        </div>
+        <button type="button" id="closeOwnEdit" class="icon-btn" aria-label="닫기">×</button>
+      </div>
+      <p class="auth-help">예선 공개 전까지만 수정할 수 있어. 기존 첨부파일은 기본적으로 유지돼.</p>
+      <label>제목 <span class="required">*</span>
+        <input id="editTitle" type="text" maxlength="120" required>
+      </label>
+      <div class="form-grid">
+        <label>이름 <span class="required">*</span>
+          <input id="editAuthor" type="text" maxlength="80" required>
+        </label>
+        <label>학과/학부 <span class="required">*</span>
+          <input id="editDepartment" type="text" maxlength="100" required>
+        </label>
+      </div>
+      <label>내용
+        <textarea id="editBody" rows="9" maxlength="12000"></textarea>
+      </label>
+      <div class="edit-attachments">
+        <strong>기존 첨부파일</strong>
+        <p class="muted">삭제하고 싶은 파일은 체크를 해제해.</p>
+        <div id="editExistingFiles"></div>
+      </div>
+      <label>새 첨부파일 추가
+        <input id="editNewFiles" type="file" multiple>
+        <small>추가 파일은 모두 R2에 저장해. 기존 파일은 다시 업로드하지 않아.</small>
+      </label>
+      <div id="editStatus" class="form-status" role="status"></div>
+      <div class="composer-actions">
+        <button type="button" id="cancelOwnEdit" class="btn secondary">취소</button>
+        <button type="submit" id="saveOwnEdit" class="btn primary">수정 저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="homeTemplate">
+    <section class="home-page">
+      <div class="hero" role="img" aria-label="별똥별이 지나가는 밤하늘 일러스트">
+        <div class="hero-stars"></div>
+        <div class="shooting-star star-a"></div>
+        <div class="shooting-star star-b"></div>
+        <div class="shooting-star star-c"></div>
+      </div>
+      <div class="home-copy">
+        <h1>나의 우주 이야기</h1>
+        <p class="semester">2026년 가을학기 우주의 진화</p>
+        <p>본 웹페이지는 서울대학교 2026년 가을학기 우주의 진화 수업의 “나의 우주 이야기”에 출품된 작품들을 감상하기 위해 제작되었습니다.<br>게시된 작품들의 저작인격권 및 저작재산권은 창작자인 수강생들에게 있으며, 소중한 저작물의 불법복제 및 도용을 금지합니다.</p>
+      </div>
+    </section>
+  </template>
+
+
+<template id="noticeTemplate">
+  <section class="content-page narrow">
+    <h1>공지사항</h1>
+
+    <article class="notice-block">
+      <h2>1. 예선</h2>
+      <dl>
+        <div>
+          <dt>■ 제출 마감</dt>
+          <dd><strong>11월 27일 금요일(23:59)</strong></dd>
+        </div>
+
+        <div>
+          <dt>■ 제출 방법</dt>
+          <dd>Entries 탭에 로그인 후 직접 제출</dd>
+        </div>
+
+        <div>
+          <dt>■ 제출 양식</dt>
+          <dd>
+            - 시, 소설, 수필, 그림, 음악, 영상 등
+            <strong>자유 양식</strong><br>
+            - <strong>그림, 사진 등 그래픽 필수</strong><br>
+            - 예선은 <strong>익명</strong>으로 진행되므로
+            작품을 제출할 때 그림/글 파일에 본인의 이름을
+            드러내지 말길 바랍니다.<br>
+            - <strong>웹페이지 Entries 게시판에는
+            과제 제출 순서대로 출품작이 배치될 예정입니다.</strong>
+          </dd>
+        </div>
+
+        <div>
+          <dt>■ 작품 예시</dt>
+          <dd>Archive 탭을 참조해주세요.</dd>
+        </div>
+
+        <div>
+          <dt>■ 평가 방식</dt>
+          <dd>
+            <strong>11월 30일 오전 8시에 웹페이지의
+            'Entries' 게시판에 작품들이 업로드 될 예정입니다.</strong>
+            <br><br>
+            여러분은 다른 학생들의 작품을 자유롭게 감상한 뒤,
+            <br>
+            <strong>12월 4일 금요일 낮 12시까지
+            선호도에 따라 3편의 작품에 투표</strong>합니다.
+            <br><br>
+            예선 투표 결과를 통하여 15편 내외의 작품을
+            본선 진출작으로 선정하여
+            <br>
+            12월 4일 금요일 오후 중으로
+            본선 진출자에게 개별적으로 알립니다.
+          </dd>
+        </div>
+      </dl>
+    </article>
+
+    <article class="notice-block">
+      <h2>2. 본선</h2>
+      <dl>
+        <div>
+          <dt>■ 방식</dt>
+          <dd>
+            <strong>본선에 진출한 학생들은
+            12월 7일 월요일 수업시간에 자신의 작품을
+            낭독/해설합니다.</strong>
+            <br><br>
+            모든 본선 진출작의 감상이 끝나면 학생들은
+            <strong>12월 8일(23:59)까지
+            본선 투표를 진행합니다.</strong>
+            <br><br>
+            예선과 마찬가지로 선호도에 따라
+            3편의 작품에 투표할 수 있습니다.
+          </dd>
+        </div>
+
+        <div>
+          <dt>■ 수상작 발표</dt>
+          <dd>
+            <strong>수상작은 12월 9일 수요일 수업시간에
+            교수님께서 알려주실 예정입니다.</strong>
+          </dd>
+        </div>
+      </dl>
+    </article>
+  </section>
+</template>
+
+
+  <template id="archiveTemplate">
+    <section class="content-page narrow archive-page">
+      <h1>Archive</h1>
+      <p>천문백일장 / 나의 우주 이야기 이전 출품작입니다.</p>
+      <div class="archive-list">
+        <a href="https://astronomy2019b.wixsite.com/writing-contest" target="_blank" rel="noopener">2019 봄학기 천문백일장 <span>↗</span></a>
+        <a href="https://snuastro2021b.wixsite.com/website" target="_blank" rel="noopener">2021 가을학기 천문백일장 <span>↗</span></a>
+        <a href="https://jmhera2007.wixsite.com/astrocontest" target="_blank" rel="noopener">2022 봄학기 천문백일장 <span>↗</span></a>
+        <a href="https://mhee7173.wixsite.com/evol-of-univ-2023con" target="_blank" rel="noopener">2023 가을학기 나의 우주 이야기 <span>↗</span></a>
+        <a href="https://mhee7173.wixsite.com/evoluniverse2024s" target="_blank" rel="noopener">2024 봄학기 나의 우주 이야기 <span>↗</span></a>
+      </div>
+    </section>
+  </template>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
