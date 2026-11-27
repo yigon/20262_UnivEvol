@@ -11,6 +11,12 @@ const editStatus = document.querySelector("#editStatus");
 const saveOwnEditButton = document.querySelector("#saveOwnEdit");
 let currentEditEntry = null;
 let editSaving = false;
+const adminFilesDialog = document.querySelector("#adminFilesDialog");
+const adminFilesForm = document.querySelector("#adminFilesForm");
+const adminFilesStatus = document.querySelector("#adminFilesStatus");
+const saveAdminFilesButton = document.querySelector("#saveAdminFiles");
+let currentAdminFilesEntry = null;
+let adminFilesSaving = false;
 const menuToggle = document.querySelector("#menuToggle");
 const mainNav = document.querySelector("#mainNav");
 
@@ -736,11 +742,15 @@ async function renderEntryDetail(id) {
         <div class="detail-media">${mediaHtml}</div>
         ${entry.body ? `<div class="detail-body">${escapeHtml(entry.body)}</div>` : ""}
         ${ownerActions}
+        ${access.is_admin && entry.upload_state === "ready" ? `<div class="owner-detail-actions">
+          <button class="btn secondary" id="adminEditFiles">조교 · 첨부파일 교체</button>
+        </div>` : ""}
         ${detailVotingHtml}
       </article>`;
 
     document.querySelector("#backToEntries").addEventListener("click", () => { location.hash = "#entries"; });
     document.querySelector("#editOwnEntry")?.addEventListener("click", () => openOwnEdit(entry));
+    document.querySelector("#adminEditFiles")?.addEventListener("click", () => openAdminAttachmentEdit(entry));
     document.querySelector("[data-vote]")?.addEventListener("click", async () => castVote(entry.id));
   } catch (error) {
     app.innerHTML = `<section class="entry-detail"><button class="back-link" onclick="location.hash='#entries'">← Entries로 돌아가기</button><p>${escapeHtml(error.message || "게시물을 불러오지 못했습니다.")}</p></section>`;
@@ -926,6 +936,7 @@ async function renderAdminPanel() {
               </div>
               <div class="admin-row-actions">
                 <button class="btn secondary" data-admin-open="${entry.id}">열람</button>
+                <button class="btn secondary" data-admin-edit-files="${entry.id}" ${entry.upload_state === "ready" ? "" : "disabled"}>첨부파일 교체</button>
                 <button class="btn secondary" data-finalist-toggle="${entry.id}">${finalistText}</button>
                 <button class="btn secondary" data-stage-preliminary="${entry.id}" ${entry.publication_stage === "preliminary" ? "disabled" : ""}>예선 공개</button>
                 <button class="btn secondary" data-stage-final="${entry.id}" ${!entry.is_finalist || entry.publication_stage === "final" ? "disabled" : ""} title="본선 진출작만 본선 공개할 수 있습니다.">본선 공개</button>
@@ -941,6 +952,13 @@ async function renderAdminPanel() {
   host.querySelectorAll("[data-admin-open]").forEach((button) => {
     button.addEventListener("click", () => {
       location.hash = `#entry/${button.dataset.adminOpen}`;
+    });
+  });
+
+  host.querySelectorAll("[data-admin-edit-files]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const entry = completedEntries.find((item) => item.id === button.dataset.adminEditFiles);
+      if (entry) openAdminAttachmentEdit(entry);
     });
   });
 
@@ -1080,6 +1098,98 @@ async function renderAdminPanel() {
     });
   });
 }
+
+// Only the administrator can start this flow. The Edge Function and SQL
+// independently enforce the permission and allow changes to attachments ONLY.
+function openAdminAttachmentEdit(entry) {
+  if (!session || !access.is_admin || entry.upload_state !== "ready") {
+    alert("조교 계정으로 로그인한 뒤 제출 완료된 작품만 변경할 수 있습니다.");
+    return;
+  }
+  currentAdminFilesEntry = entry;
+  adminFilesForm.reset();
+  adminFilesStatus.textContent = "";
+  adminFilesStatus.classList.remove("error");
+  document.querySelector("#adminFilesEntryTitle").textContent = entry.title;
+  const files = Array.isArray(entry.attachments) ? entry.attachments : [];
+  document.querySelector("#adminExistingFiles").innerHTML = files.length
+    ? files.map((file, i) => `<label class="edit-file-item">
+        <input type="checkbox" data-admin-keep="${escapeHtml(file.path || "")}" checked>
+        <span>유지: ${escapeHtml(file.name || `첨부파일 ${i + 1}`)} (${storageOf(file) === "r2" ? "R2" : "Supabase"})</span>
+      </label>`).join("")
+    : `<p class="muted">현재 첨부파일이 없습니다.</p>`;
+  adminFilesDialog.showModal();
+}
+
+function closeAdminAttachmentEdit() {
+  if (adminFilesSaving) return;
+  adminFilesDialog.close();
+  adminFilesForm.reset();
+  adminFilesStatus.textContent = "";
+  currentAdminFilesEntry = null;
+}
+
+adminFilesForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const entry = currentAdminFilesEntry;
+  if (!entry || adminFilesSaving) return;
+  adminFilesSaving = true;
+  saveAdminFilesButton.disabled = true;
+  adminFilesStatus.classList.remove("error");
+  let editId = null;
+  let committed = false;
+  try {
+    const originalFiles = Array.isArray(entry.attachments) ? entry.attachments : [];
+    const keepPaths = [...adminFilesDialog.querySelectorAll("[data-admin-keep]:checked")]
+      .map((checkbox) => checkbox.dataset.adminKeep);
+    const files = [...document.querySelector("#adminNewFiles").files];
+    if (!files.length && keepPaths.length === originalFiles.length) {
+      throw new Error("교체할 파일을 추가하거나 기존 첨부파일의 체크를 해제해 주세요.");
+    }
+    if (files.length + keepPaths.length > 20) {
+      throw new Error("기존 첨부파일을 포함해 최대 20개까지 가능합니다.");
+    }
+    adminFilesStatus.textContent = "조교 전용 첨부파일 수정 세션 생성 중…";
+    const started = await r2Request("begin-admin-attachment-edit", {
+      entryId: entry.id, keepPaths,
+    });
+    editId = started.editId;
+    for (let i = 0; i < files.length; i += 1) {
+      await uploadFileToR2(files[i], entry.id, i, files.length,
+        { editId, statusTarget: adminFilesStatus });
+    }
+    adminFilesStatus.textContent = "새 첨부파일 목록 확정 중…";
+    const result = await r2Request("commit-admin-attachment-edit", { editId });
+    committed = true;
+    alert(result.cleanupPending
+      ? "첨부파일 교체 완료. 제거한 파일의 서버 정리는 다음 정리 작업에서 재시도됩니다."
+      : "첨부파일을 교체했습니다. 게시물 정보와 투표 기록은 유지됩니다.");
+    adminFilesSaving = false;
+    closeAdminAttachmentEdit();
+    entriesCache = [];
+    await loadPublishedEntries();
+    if (parseRoute().section === "entry") await renderEntryDetail(entry.id);
+    else await renderEntries();
+  } catch (error) {
+    console.error(error);
+    if (editId && !committed) {
+      try { await r2Request("cancel-admin-attachment-edit", { editId }); }
+      catch (cleanupError) { console.error("Admin edit cleanup deferred:", cleanupError); }
+    }
+    adminFilesStatus.textContent = error.message || "교체에 실패했습니다. 기존 첨부파일은 유지됩니다.";
+    adminFilesStatus.classList.add("error");
+  } finally {
+    adminFilesSaving = false;
+    saveAdminFilesButton.disabled = false;
+  }
+});
+
+document.querySelector("#cancelAdminFiles").addEventListener("click", closeAdminAttachmentEdit);
+document.querySelector("#closeAdminFiles").addEventListener("click", closeAdminAttachmentEdit);
+adminFilesDialog.addEventListener("cancel", (event) => {
+  if (adminFilesSaving) event.preventDefault();
+  else currentAdminFilesEntry = null;
+});
 
 function openOwnEdit(entry) {
   if (!session || !myOwnEntryIds.has(entry.id) || entry.publication_stage !== "hidden" ||
