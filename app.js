@@ -225,6 +225,12 @@ async function r2Request(action, payload = {}) {
         explanation = details.error || explanation;
       }
     } catch { /* keep the underlying network error */ }
+    // Old/stale Edge Function deployments don't recognize these actions.
+    // Surface the actual fix instead of just "알 수 없는 작업입니다".
+    if (explanation.includes("알 수 없는 작업") || explanation.toLowerCase().includes("unknown action")) {
+      explanation = `Edge Function(r2-storage)이 '${action}' 작업을 인식하지 못합니다. `
+        + "Supabase의 r2-storage/index.ts를 이 패치에 포함된 최신 버전으로 재배포하고 새로고침해 주세요.";
+    }
     throw new Error(explanation);
   }
   if (data?.error) throw new Error(data.error);
@@ -1110,6 +1116,7 @@ function openAdminAttachmentEdit(entry) {
   adminFilesForm.reset();
   adminFilesStatus.textContent = "";
   adminFilesStatus.classList.remove("error");
+  updateAdminSelectedFiles();
   document.querySelector("#adminFilesEntryTitle").textContent = entry.title;
   const files = Array.isArray(entry.attachments) ? entry.attachments : [];
   document.querySelector("#adminExistingFiles").innerHTML = files.length
@@ -1126,8 +1133,33 @@ function closeAdminAttachmentEdit() {
   adminFilesDialog.close();
   adminFilesForm.reset();
   adminFilesStatus.textContent = "";
+  updateAdminSelectedFiles();
   currentAdminFilesEntry = null;
 }
+
+function updateAdminSelectedFiles() {
+  const input = document.querySelector("#adminNewFiles");
+  const selection = document.querySelector("#adminFileSelection");
+  const clear = document.querySelector("#clearAdminFiles");
+  if (!input || !selection) return;
+  const files = Array.from(input.files || []);
+  selection.textContent = files.length
+    ? `${files.length}개 선택: ${files.map((file) => file.name).join(", ")}`
+    : "선택한 파일 없음";
+  if (clear) clear.hidden = files.length === 0;
+}
+
+// The file input stays hidden, but the user always gets a visible, accessible
+// choose-file button. .click() is synchronous within the user gesture.
+document.querySelector("#chooseAdminFiles")?.addEventListener("click", () => {
+  if (!adminFilesSaving) document.querySelector("#adminNewFiles")?.click();
+});
+document.querySelector("#adminNewFiles")?.addEventListener("change", updateAdminSelectedFiles);
+document.querySelector("#clearAdminFiles")?.addEventListener("click", () => {
+  const input = document.querySelector("#adminNewFiles");
+  if (input && !adminFilesSaving) input.value = "";
+  updateAdminSelectedFiles();
+});
 
 adminFilesForm.addEventListener("submit", async (event) => {
   event.preventDefault();
