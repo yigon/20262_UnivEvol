@@ -600,3 +600,15 @@ dd { margin: 0; color: #444; }
 @media (max-width: 500px) {
   .pdf-detail-preview iframe { min-height: 360px; height: 65vh; }
 }
+
+
+/* Explicit, cross-browser admin file picker; native input is triggered by a
+ * real user click instead of depending on browser-specific file input chrome. */
+.admin-file-upload { margin: 4px 0 20px; }
+.admin-upload-heading { margin-bottom: 9px; font-size: 13px; font-weight: 400; }
+.admin-file-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 12px; }
+.admin-file-picker .btn { flex-shrink: 0; }
+#adminFileSelection { font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
+.admin-upload-help { display: block; margin-top: 8px; font-size: 12px; color: var(--muted); }
+/* Override the general .composer input[type="file"] display rule. */
+#adminNewFiles[hidden] { display: none !important; }
