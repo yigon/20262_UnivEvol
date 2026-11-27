@@ -83,7 +83,7 @@
         </div>
         <button type="button" id="closeOwnEdit" class="icon-btn" aria-label="닫기">×</button>
       </div>
-      <p class="auth-help">예선 공개 전까지만 수정할 수 있습니다. 기존 첨부파일은 기본적으로 유지됩니다.</p>
+      <p class="auth-help">예선 공개 전까지만 수정할 수 있습니다..</p>
       <label>제목 <span class="required">*</span>
         <input id="editTitle" type="text" maxlength="120" required>
       </label>
@@ -105,11 +105,37 @@
       </div>
       <label>새 첨부파일 추가
         <input id="editNewFiles" type="file" multiple>
+        <small>.</small>
       </label>
       <div id="editStatus" class="form-status" role="status"></div>
       <div class="composer-actions">
         <button type="button" id="cancelOwnEdit" class="btn secondary">취소</button>
         <button type="submit" id="saveOwnEdit" class="btn primary">수정 저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="adminFilesDialog" class="composer-dialog edit-dialog">
+    <form id="adminFilesForm" class="composer">
+      <div class="composer-head">
+        <div>
+          <p class="eyebrow">ADMIN / ATTACHMENTS</p>
+          <h2>조교 · 첨부파일 교체</h2>
+        </div>
+        <button type="button" id="closeAdminFiles" class="icon-btn" aria-label="닫기">×</button>
+      </div>
+      <p class="auth-help"><strong id="adminFilesEntryTitle"></strong></p>
+      <p class="auth-help">기존 첨부파일을 제거하려면 체크를 해제하세요.</p>
+      <div class="edit-attachments">
+        <strong>기존 첨부파일</strong>
+        <div id="adminExistingFiles"></div>
+      </div>
+      <label>새 첨부파일
+      </label>
+      <div id="adminFilesStatus" class="form-status" role="status"></div>
+      <div class="composer-actions">
+        <button type="button" id="cancelAdminFiles" class="btn secondary">취소</button>
+        <button type="submit" id="saveAdminFiles" class="btn primary">첨부파일 변경 저장</button>
       </div>
     </form>
   </dialog>
